@@ -1,176 +1,450 @@
+// スプレッドシートおよびフォルダのIDを一括設定
+const MAIN_SHEET_ID = '1cSO2yUBzTT8CM2cIngn-s4NYxKedu6Zg8baI3NR2WKw'; // メインスプレッドシートのID
+const TEMPLATE_SHEET_ID = '1UP4hFfAoPPjW8n2eFbRGq6_z9q3SM7iXf-qzNkG_ioM'; // 生徒カルテテンプレートスプレッドシートのID
+const LEARNING_PLAN_TEMPLATE_ID = '1SExvVa09sWW9XsXL55joiMSGx4T-jPKqu56swho0ytg'; // 学習プランテンプレートのID
+const DOC_TEMPLATE_ID = '1oPftf3bC18WLfhL_Q0-i5o49c_4qL2-0YpVkZeO2Ba0'; // 挨拶文ドキュメントテンプレートのID
+const ANNOUNCEMENT_TEMPLATE_ID = '17QefCyDykSWndmi7fbwGvni5sygtAXqCkR8VfEmkZcI'; // アナウンス文テンプレートのドキュメントID
+const DESTINATION_FOLDER_ID = '14-_RANtndz335JtiayoAMMmTgbpY3sm5'; // コピー先フォルダのID
+
+// シート名の設定
+const MAIN_SHEET_NAME = 'フォームの回答 1'; // メインスプレッドシートのシート名
+const RECORD_SHEET_NAME = '記録用'; // コピー先スプレッドシート内の「記録用」シート名
+const LINK_SHEET_NAME = 'フォームリンク'; // コピー先スプレッドシート内の「フォームリンク」シート名
+
+// Googleフォームの設定
+const FORM_BASE_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScrWK0aeI7uet1PMLA5wPeP6NNOJxSQ-kh4gAXx-nvVZAWzgQ/viewform'; // 指導報告フォームのベースURL
+const REP_FORM_BASE_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfOC28FTb2onF-xKvp9731HmaOQ7eiHXFihetv2FawtwKFYvg/viewform'; // 面談報告フォームのベースURL
+const TEACHER_ENTRY_ID = 'entry.1352052499'; // 教師名のエントリーID
+const STUDENT_ENTRY_ID = 'entry.1936536483'; // 生徒名のエントリーID
+
 /**
- * ===== 定数設定 =====
+ * トリガーを設定する関数
  */
-// LINE公式アカウントのチャネルアクセストークン
-const LINE_CHANNEL_ACCESS_TOKEN = "dZpUYeX01inGjmuvPX0Rs3bUnvZl4ukhopc1UVnOrrBn2aWgpdhhPqkC5tknfu1yPp6suWSPxeYxGx2OQ6GPXDeUxp/lk1fedvn7U/TohJYm9Tqgztbozs5or3hExTSRvkhmztxhS4Z+u1/I0eGmIgdB04t89/1O/w1cDnyilFU=";
-
-// スプレッドシートID（シフト管理シート）
-const SPREADSHEET_ID = "1FB4Ly73WM9KyTceyUU94HBnWK342Gaag3Rrf0t6tLkU";
-
-// ユーザー名とユーザーIDの対応表
-const USER_MAPPING = {
-  "倉迫": "Uda9a94c9ebee0913879094fab46c3d53",
-  "久野": "U4216eea3ccecabffb5407f6288144222",
-  "金森": "Uab1afcc281a07f8f9eaf9c86f62c673a"
-};
-
-// 担当者が不明の場合のフォールバックユーザーID（適切なユーザーIDに置き換えてください）
-const FALLBACK_USER_ID = "U56fb0ab66318998e7c36e9c9c7426a66";
-
-
-/**
- * ===== LINE公式アカウントAPIを利用して個別チャットでメッセージ送信 =====
- */
-function sendLineMessage(target, message) {
-  var url = "https://api.line.me/v2/bot/message/push";
-  var payload = {
-    "to": target,
-    "messages": [
-      {
-        "type": "text",
-        "text": message
-      }
-    ]
-  };
-  var options = {
-    "method": "post",
-    "contentType": "application/json",
-    "headers": {
-      "Authorization": "Bearer " + LINE_CHANNEL_ACCESS_TOKEN
-    },
-    "payload": JSON.stringify(payload)
-  };
-  UrlFetchApp.fetch(url, options);
+function createEditTrigger() {
+  // 既存のトリガーを削除（重複を避けるため）
+  const allTriggers = ScriptApp.getProjectTriggers();
+  
+  allTriggers.forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'handleEdit' && trigger.getTriggerSourceId() === MAIN_SHEET_ID) {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  
+  // 新しい編集トリガーを作成
+  ScriptApp.newTrigger('handleEdit')
+    .forSpreadsheet(MAIN_SHEET_ID)
+    .onEdit()
+    .create();
+  
+  Logger.log('編集トリガーが設定されました。');
 }
 
-
 /**
- * ===== スプレッドシートから担当者名を取得する関数 =====
+ * メインスプレッドシートでの編集を検知するトリガー関数
+ * @param {Object} e - 編集イベントオブジェクト
  */
-function getResponsibleName() {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = ss.getSheets()[0];
+function handleEdit(e) {
+  const sheet = e.range.getSheet();
+  const editedRow = e.range.getRow();
+  const editedColumn = e.range.getColumn();
   
-  if (!sheet) {
-    Logger.log("エラー: 指定したシートが見つかりません");
-    return "担当";
-  }
-
-  var data = sheet.getDataRange().getValues();
-  var todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M/d"); 
-  Logger.log("今日の日付 (比較用): " + todayStr);
-
-  for (var i = 1; i < data.length; i++) {
-    var rowDate = data[i][0];
-    var responsible = data[i][2];
-
-    var typeStr = Object.prototype.toString.call(rowDate);
-    Logger.log("【デバッグ】Row " + (i+1) + " - A列の型判定: " + typeStr + " / 生データ: " + rowDate);
-    
-    if (typeStr === "[object Date]") {
-      var rowDateStr = Utilities.formatDate(rowDate, "Asia/Tokyo", "M/d");
-      Logger.log("【デバッグ】Row " + (i+1) + " - Date型としてフォーマットされた日付: " + rowDateStr + " / 担当者: " + responsible);
-      if (rowDateStr === todayStr) {
-        Logger.log("【デバッグ】Row " + (i+1) + " - 一致！担当者: " + responsible);
-        return responsible || "担当";
-      }
-    } else if (typeof rowDate === "string") {
-      var trimmedRowDate = rowDate.trim();
-      Logger.log("【デバッグ】Row " + (i+1) + " - 文字列として取得された日付: " + trimmedRowDate + " / 担当者: " + responsible);
-      if (trimmedRowDate === todayStr) {
-        Logger.log("【デバッグ】Row " + (i+1) + " - 文字列一致！担当者: " + responsible);
-        return responsible || "担当";
-      }
-    } else {
-      Logger.log("【デバッグ】Row " + (i+1) + " - 想定外の型: " + typeStr + " / 値: " + rowDate);
+  // メインスプレッドシートか確認
+  if (e.source.getId() !== MAIN_SHEET_ID) return;
+  
+  // 編集されたシート名がメインシートか確認
+  if (sheet.getName() !== MAIN_SHEET_NAME) return;
+  
+  // G列（7列目）に編集があったか確認
+  if (editedColumn === 7) {
+    const isChecked = e.value === 'TRUE';
+    if (isChecked) {
+      processRow(editedRow);
     }
   }
-
-  Logger.log("該当する担当者が見つかりませんでした");
-  return "担当";
 }
 
-
 /**
- * ===== 【朝7時用】担当者へ個別チャットでメッセージ送信する関数 =====
+ * 指定された行のデータを処理する関数
+ * @param {number} row - 処理する行番号
  */
-function sendMorningIndividualMessage() {
-  var responsibleName = getResponsibleName();
-  var userId = USER_MAPPING[responsibleName];
+function processRow(row) {
+  const mainSpreadsheet = SpreadsheetApp.openById(MAIN_SHEET_ID);
+  const mainSheet = mainSpreadsheet.getSheetByName(MAIN_SHEET_NAME);
   
-  // 朝のメッセージ文
-  var morningMessage = "おはようございます！\n" +
-                       "本日もよろしくお願いいたします！\n\n" +
-                       "午前中の段階で\n" +
-                       "・Slackの営業予約の確認\n" +
-                       "・本日営業予定の方にリマインド\n\n" +
-                       "こちらの2点をお願いいたします！ \n" +
-                       "完了したら「完了！」と営業LINEグループに投稿してください!";
+  // ヘッダー行の取得（1行目と仮定）
+  const headers = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues()[0];
+  
+  // 処理対象の行データ取得
+  const rowData = mainSheet.getRange(row, 1, 1, mainSheet.getLastColumn()).getValues()[0];
+  
+  // ヘッダーとデータをマッピング
+  let data = {};
+  headers.forEach((header, index) => {
+    data[header] = rowData[index];
+  });
+  
+  // 変数へのマッピング
+  const student_name = data['生徒様のお名前'] || '名前不明';
+  const student_id = data['ID'] || 'ID不明';
+  const teacher_name = data['担当教師'] || '担当教師不明';
+  const teacher_mail = data['Gmail'] || 'メールアドレス不明';
+  const first_month_num = data['初月指導回数'] || '初月指導回数不明';
+  const one_class_time = data['1コマ指導時間'] || '1コマ指導時間不明';
+  const each_month_num = data['毎月指導回数'] || '毎月指導回数不明';
+  
+  // 生徒専用フォルダを作成（Folderオブジェクトを返す）
+  const studentFolder = createStudentFolder(student_name, student_id);
+  const studentFolderUrl = studentFolder.getUrl();
+  
+  // 生徒専用フォルダ内に授業動画フォルダを作成する（存在しない場合のみ）
+  const lessonFolderUrl = createLessonVideoFolder(studentFolder, student_name, teacher_mail);
+  
+  // 生徒カルテ・指導報告フォームリンク（既存の場合は削除して新規生成）
+  const newSpreadsheetUrl = copyTemplateSpreadsheet(data, student_name, studentFolder);
+  Logger.log(`スプレッドシートが作成されました: ${newSpreadsheetUrl}`);
 
-  // フォールバック用メッセージ文
-  var fallbackMessage = "担当者不明のため送信されています。\n" + morningMessage;
-
-  if (!userId) {
-    Logger.log("担当者がUSER_MAPPINGに存在しないため、フォールバックユーザーに送信します");
-    userId = FALLBACK_USER_ID;
-    sendLineMessage(userId, fallbackMessage);
-    Logger.log("フォールバックメッセージ送信成功");
+  // 学習プランシート（既に存在する場合は新規生成しない）
+  const learningPlanUrl = copyLearningPlanTemplate(student_name, studentFolder);
+  Logger.log(`学習プランシートが作成されました: ${learningPlanUrl}`);
+  
+  // 挨拶文（既に存在する場合は新規生成しない）
+  const newDocUrl = copyAndReplaceDoc(student_name, teacher_name, studentFolder);
+  
+  // フォームURLを生成
+  const formUrl = generatePrefilledFormUrl(teacher_name, student_name);
+  const repformUrl = generatePrefilledRepFormUrl(teacher_name, student_name);
+  
+  if (formUrl) { // formUrlが有効な場合のみ記録
+    recordFormLink(newSpreadsheetUrl, formUrl);
   } else {
-    try {
-      sendLineMessage(userId, morningMessage);
-      Logger.log("朝の個別メッセージ送信成功: " + responsibleName);
-    } catch (e) {
-      Logger.log("朝の個別メッセージ送信エラー: " + e.toString());
+    Logger.log('フォームURLが生成されませんでした。フォームリンクへの記録をスキップします。');
+  }
+
+  // 共有処理： teacher_mail が「メールアドレス不明」ではない場合のみ実施
+  if (teacher_mail !== 'メールアドレス不明') {
+    shareFileWithUser(newSpreadsheetUrl, teacher_mail);
+    shareFileWithUser(learningPlanUrl, teacher_mail);
+    // ※ 授業動画フォルダは作成時に共有設定済み
+  } else {
+    Logger.log('teacher_mail が「メールアドレス不明」のため、共有はスキップします。');
+  }
+
+  // 先生共有用アナウンス文（既存の場合は削除して新規生成、[lessonfolderUrl]を置換）
+  const announcementDocUrl = generateAnnouncementDocFromTemplate(
+    student_name,
+    newSpreadsheetUrl,
+    formUrl,
+    repformUrl,
+    learningPlanUrl,
+    studentFolder,
+    lessonFolderUrl,
+    first_month_num,
+    one_class_time,
+    each_month_num
+  );
+  Logger.log(`アナウンス文書が作成されました: ${announcementDocUrl}`);
+  
+  // 処理完了後にチェックボックスをオフにする
+  mainSheet.getRange(row, 7).setValue(false);
+}
+
+/**
+ * 生徒専用フォルダを作成し、そのFolderオブジェクトを返す関数
+ * @param {string} student_name - 生徒様のお名前
+ * @param {string} student_id - 生徒様のID
+ * @returns {Folder} - 生徒専用フォルダのFolderオブジェクト
+ */
+function createStudentFolder(student_name, student_id) {
+  const destinationFolder = DriveApp.getFolderById(DESTINATION_FOLDER_ID);
+  const folderName = `${student_id}_${student_name}さん`;
+  
+  // 既にフォルダが存在するか確認
+  const folders = destinationFolder.getFoldersByName(folderName);
+  let studentFolder;
+  
+  if (folders.hasNext()) {
+    studentFolder = folders.next();
+  } else {
+    // 新しいフォルダを作成
+    studentFolder = destinationFolder.createFolder(folderName);
+    Logger.log(`新しい生徒専用フォルダが作成されました: ${studentFolder.getUrl()}`);
+  }
+  
+  return studentFolder;
+}
+
+/**
+ * 生徒専用フォルダ内に「オンライン学習塾のLaf_[student_name]様授業動画」フォルダを作成し、共有設定を行う関数
+ * @param {Folder} studentFolder - 生徒専用フォルダのFolderオブジェクト
+ * @param {string} student_name - 生徒様のお名前
+ * @param {string} teacher_mail - 担当教師のメールアドレス
+ * @returns {string} - 作成された授業動画フォルダのURL
+ */
+function createLessonVideoFolder(studentFolder, student_name, teacher_mail) {
+  const folderName = `オンライン学習塾のLaf_${student_name}様授業動画`;
+  const folders = studentFolder.getFoldersByName(folderName);
+  let lessonFolder;
+  
+  if (folders.hasNext()) {
+    lessonFolder = folders.next();
+  } else {
+    lessonFolder = studentFolder.createFolder(folderName);
+    Logger.log(`新しい授業動画フォルダが作成されました: ${lessonFolder.getUrl()}`);
+    
+    // teacher_mail に編集権限を付与（有効な場合）
+    if (teacher_mail && teacher_mail !== 'メールアドレス不明') {
+      lessonFolder.addEditor(teacher_mail);
     }
+    // リンクを知っている人全員に閲覧権限を付与
+    lessonFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  }
+  
+  return lessonFolder.getUrl();
+}
+
+/**
+ * テンプレートスプレッドシートをコピーし、データを「記録用」シートに挿入する関数  
+ * 生徒カルテ・指導報告フォームリンクは、同名ファイルが存在する場合は削除して新規生成する
+ * @param {Object} data - 行データのオブジェクト
+ * @param {string} student_name - 生徒様のお名前
+ * @param {Folder} folder - 生徒専用フォルダのFolderオブジェクト
+ * @returns {string} - 新しく作成されたスプレッドシートのURL
+ */
+function copyTemplateSpreadsheet(data, student_name, folder) {
+  const newFileName = `${student_name}さん_生徒カルテ・指導報告フォームリンク`;
+  // 同名ファイルの存在チェックと削除
+  const existingFiles = folder.getFilesByName(newFileName);
+  while (existingFiles.hasNext()) {
+    const file = existingFiles.next();
+    file.setTrashed(true);
+    Logger.log(`既存の生徒カルテファイルを削除しました: ${file.getUrl()}`);
+  }
+  
+  const templateFile = DriveApp.getFileById(TEMPLATE_SHEET_ID);
+  const newFile = templateFile.makeCopy(newFileName, folder);
+  
+  // 新しいスプレッドシートを開く
+  const newSpreadsheet = SpreadsheetApp.open(newFile);
+  
+  // 「記録用」シートを取得または作成
+  let recordSheet = newSpreadsheet.getSheetByName(RECORD_SHEET_NAME);
+  if (!recordSheet) {
+    recordSheet = newSpreadsheet.insertSheet(RECORD_SHEET_NAME);
+  }
+  
+  const mainSpreadsheet = SpreadsheetApp.openById(MAIN_SHEET_ID);
+  const mainSheet = mainSpreadsheet.getSheetByName(MAIN_SHEET_NAME);
+  const headers = mainSheet.getRange(1, 1, 1, mainSheet.getLastColumn()).getValues()[0];
+  
+  const rowData = [];
+  headers.forEach(header => {
+    rowData.push(data[header]);
+  });
+  
+  // ヘッダーが存在しない場合、ヘッダーを追加
+  const lastRow = recordSheet.getLastRow();
+  if (lastRow === 0) {
+    recordSheet.appendRow(headers);
+  }
+  recordSheet.appendRow(rowData);
+  
+  return newSpreadsheet.getUrl();
+}
+
+/**
+ * 学習プランテンプレートをコピーする関数  
+ * 学習プランシートは、同名ファイルが存在する場合は新規生成しない
+ * @param {string} student_name - 生徒様のお名前
+ * @param {Folder} folder - 生徒専用フォルダのFolderオブジェクト
+ * @returns {string} - 学習プランスプレッドシートのURL
+ */
+function copyLearningPlanTemplate(student_name, folder) {
+  const newFileName = `${student_name}さん_学習プランシート`;
+  const existingFiles = folder.getFilesByName(newFileName);
+  if (existingFiles.hasNext()) {
+    const existingFile = existingFiles.next();
+    Logger.log(`既存の学習プランシートが使用されます: ${existingFile.getUrl()}`);
+    return SpreadsheetApp.open(existingFile).getUrl();
+  }
+  
+  try {
+    const templateFile = DriveApp.getFileById(LEARNING_PLAN_TEMPLATE_ID);
+    const newFile = templateFile.makeCopy(newFileName, folder);
+    const newSpreadsheet = SpreadsheetApp.open(newFile);
+    const newUrl = newSpreadsheet.getUrl();
+    Logger.log(`学習プランシートが作成されました: ${newUrl}`);
+    return newUrl;
+  } catch (error) {
+    Logger.log(`copyLearningPlanTemplateでエラーが発生しました: ${error}`);
+    return null;
   }
 }
 
-
 /**
- * ===== 【昼12時用】USER_MAPPINGの全員へ個別チャットでメッセージ送信する関数 =====
+ * ドキュメントテンプレートをコピーし、プレースホルダーを置換する関数  
+ * 挨拶文は、同名ファイルが存在する場合は新規生成しない
+ * @param {string} student_name - 生徒様のお名前
+ * @param {string} teacher_name - 担当教師の名前
+ * @param {Folder} folder - 生徒専用フォルダのFolderオブジェクト
+ * @returns {string|null} - 挨拶文ドキュメントのURL（失敗時はnull）
  */
-function sendNoonIndividualMessage() {
-  var noonMessage = "お疲れ様です！\n" +
-                    "本日も\n\n" +
-                    "・Slackにて自分宛のメンションがないかの確認と対応\n" +
-                    "・公式LINEにて自分の担当の状況の確認\n" +
-                    "こちらの2点をお願いいたします！ \n" +
-                    "完了したら「完了！」と営業LINEグループに投稿してください!";
-                    
-  for (var name in USER_MAPPING) {
-    var userId = USER_MAPPING[name];
-    try {
-      sendLineMessage(userId, noonMessage);
-      Logger.log("昼の個別メッセージ送信成功: " + name);
-    } catch (e) {
-      Logger.log("昼の個別メッセージ送信エラー (" + name + "): " + e.toString());
-    }
+function copyAndReplaceDoc(student_name, teacher_name, folder) {
+  const newDocName = `${student_name}さん_挨拶文`;
+  const existingDocs = folder.getFilesByName(newDocName);
+  if (existingDocs.hasNext()) {
+    const existingDoc = existingDocs.next();
+    Logger.log(`既存の挨拶文ドキュメントが使用されます: ${existingDoc.getUrl()}`);
+    return DocumentApp.openById(existingDoc.getId()).getUrl();
+  }
+  
+  try {
+    const docTemplateFile = DriveApp.getFileById(DOC_TEMPLATE_ID);
+    const newDocFile = docTemplateFile.makeCopy(newDocName, folder);
+    const newDoc = DocumentApp.openById(newDocFile.getId());
+    const body = newDoc.getBody();
+    
+    body.replaceText('\\[student_name\\]', student_name);
+    body.replaceText('\\[teacher_name\\]', teacher_name);
+    
+    newDoc.saveAndClose();
+    
+    const newDocUrl = newDoc.getUrl();
+    Logger.log(`ドキュメントが作成されました: ${newDocUrl}`);
+    
+    return newDocUrl;
+  } catch (error) {
+    Logger.log(`copyAndReplaceDocでエラーが発生しました: ${error}`);
+    return null;
   }
 }
 
+/**
+ * URLからGoogleドライブフォルダのIDを抽出する関数
+ * @param {string} folderUrl - フォルダのURL
+ * @returns {string} - フォルダID
+ */
+function extractFolderIdFromUrl(folderUrl) {
+  const match = folderUrl.match(/[-\w]{25,}/);
+  return match ? match[0] : null;
+}
 
 /**
- * ===== トリガーの設定（初回実行時に実行してください） =====
- * 朝7時と昼12時に自動実行するトリガーを作成します。
+ * 教師名と生徒名を基に事前入力フォームURLを生成する関数
+ * @param {string} teacher_name - 担当教師の名前
+ * @param {string} student_name - 生徒様のお名前
+ * @returns {string} - 生成されたフォームURL
  */
-function setupTriggers() {
-  // 既存のトリガーを全て削除
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    ScriptApp.deleteTrigger(triggers[i]);
+function generatePrefilledFormUrl(teacher_name, student_name) {
+  const encodedTeacherName = encodeURIComponent(teacher_name);
+  const encodedStudentName = encodeURIComponent(student_name);
+  return `${FORM_BASE_URL}?${TEACHER_ENTRY_ID}=${encodedTeacherName}&${STUDENT_ENTRY_ID}=${encodedStudentName}`;
+}
+
+/**
+ * 教師名と生徒名を基に事前入力面談報告フォームURLを生成する関数
+ * @param {string} teacher_name - 担当教師の名前
+ * @param {string} student_name - 生徒様のお名前
+ * @returns {string} - 生成されたフォームURL
+ */
+function generatePrefilledRepFormUrl(teacher_name, student_name) {
+  const encodedTeacherName = encodeURIComponent(teacher_name);
+  const encodedStudentName = encodeURIComponent(student_name);
+  return `${REP_FORM_BASE_URL}?${TEACHER_ENTRY_ID}=${encodedTeacherName}&${STUDENT_ENTRY_ID}=${encodedStudentName}`;
+}
+
+/**
+ * コピー先スプレッドシートの「フォームリンク」シートにフォームURLを記録する関数
+ * @param {string} spreadsheetUrl - コピーされたスプレッドシートのURL
+ * @param {string} formUrl - 生成されたフォームのURL
+ */
+function recordFormLink(spreadsheetUrl, formUrl) {
+  if (!formUrl) {
+    Logger.log('フォームURLが存在しません。recordFormLinkをスキップします。');
+    return;
   }
   
-  // 朝7時に送信するトリガーを設定
-  ScriptApp.newTrigger("sendMorningIndividualMessage")
-    .timeBased()
-    .everyDays(1)
-    .atHour(7)
-    .create();
+  const copiedSpreadsheet = SpreadsheetApp.openByUrl(spreadsheetUrl);
+  let linkSheet = copiedSpreadsheet.getSheetByName(LINK_SHEET_NAME);
+  if (!linkSheet) {
+    linkSheet = copiedSpreadsheet.insertSheet(LINK_SHEET_NAME);
+    linkSheet.appendRow(['フォームURL']);
+  }
   
-  // 昼12時に送信するトリガーを設定
-  ScriptApp.newTrigger("sendNoonIndividualMessage")
-    .timeBased()
-    .everyDays(1)
-    .atHour(12)
-    .create();
+  try {
+    linkSheet.appendRow([formUrl]);
+    Logger.log(`フォームリンクが記録されました: ${formUrl}`);
+  } catch (error) {
+    Logger.log(`recordFormLinkでエラーが発生しました: ${error}`);
+  }
+}
+
+/**
+ * 指定されたURLからファイルIDを抽出し、対象ファイルを指定のユーザーに編集権限で共有する関数
+ * @param {string} fileUrl - 共有するファイルのURL
+ * @param {string} userEmail - 共有先のメールアドレス
+ */
+function shareFileWithUser(fileUrl, userEmail) {
+  if (!fileUrl || !userEmail) return;
+  const idMatch = fileUrl.match(/[-\w]{25,}/);
+  if (idMatch) {
+    const fileId = idMatch[0];
+    const file = DriveApp.getFileById(fileId);
+    file.addEditor(userEmail);
+    Logger.log(`${file.getName()} を ${userEmail} に共有しました。`);
+  } else {
+    Logger.log(`ファイルIDがURLから取得できませんでした: ${fileUrl}`);
+  }
+}
+
+/**
+ * アナウンス文用のテンプレートドキュメントをコピーし、プレースホルダーを置換する関数  
+ * 先生共有用アナウンス文は、同名ファイルが存在する場合は削除して新規生成する  
+ * また、[lessonfolderUrl] プレースホルダーを授業動画フォルダのリンクに置換する
+ * @param {string} student_name - 生徒様のお名前
+ * @param {string} spreadsheetUrl - 生徒カルテ・指導報告フォームリンクのURL
+ * @param {string} formUrl - 指導報告フォームのURL
+ * @param {string} repformUrl - 面談報告フォームのURL
+ * @param {string} learningPlanUrl - 学習プランシートのURL
+ * @param {Folder} studentFolder - 生徒専用フォルダのFolderオブジェクト
+ * @param {string} lessonFolderUrl - 授業動画フォルダのURL
+ * @param {string} first_month_num - 初月指導回数
+ * @returns {string} - 生成されたアナウンス文ドキュメントのURL
+ */
+function generateAnnouncementDocFromTemplate(student_name, spreadsheetUrl, formUrl, repformUrl, learningPlanUrl, studentFolder, lessonFolderUrl, first_month_num, one_class_time, each_month_num) {
+  const newDocName = `${student_name}さん_先生共有用アナウンス文`;
+  
+  // 生徒専用フォルダ内に同名ファイルが存在する場合は削除
+  const existingDocs = studentFolder.getFilesByName(newDocName);
+  while (existingDocs.hasNext()) {
+    const file = existingDocs.next();
+    file.setTrashed(true);
+    Logger.log(`既存の先生共有用アナウンス文を削除しました: ${file.getUrl()}`);
+  }
+  
+  const templateFile = DriveApp.getFileById(ANNOUNCEMENT_TEMPLATE_ID);
+  // 一旦ルートにコピー作成（後で生徒専用フォルダに移動）
+  const newDocFile = templateFile.makeCopy(newDocName);
+  
+  const doc = DocumentApp.openById(newDocFile.getId());
+  const body = doc.getBody();
+  
+  // プレースホルダーの置換
+  body.replaceText('\\[student_name\\]', student_name);
+  body.replaceText('\\[spreadsheetUrl\\]', spreadsheetUrl);
+  body.replaceText('\\[formUrl\\]', formUrl);
+  body.replaceText('\\[repformUrl\\]', repformUrl);
+  body.replaceText('\\[learningPlanUrl\\]', learningPlanUrl);
+  body.replaceText('\\[first_month_num\\]', first_month_num);
+  body.replaceText('\\[one_class_time\\]', one_class_time);
+  body.replaceText('\\[each_month_num\\]', each_month_num);
+  body.replaceText('\\[lessonfolderUrl\\]', lessonFolderUrl);
+  
+  doc.saveAndClose();
+  
+  // 作成したドキュメントを生徒専用フォルダへ移動
+  studentFolder.addFile(newDocFile);
+  DriveApp.getRootFolder().removeFile(newDocFile);
+  
+  Logger.log('アナウンス文ドキュメントが作成されました: ' + doc.getUrl());
+  return doc.getUrl();
 }
