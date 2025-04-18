@@ -1,0 +1,8 @@
+{
+  "timeZone": "Etc/GMT-9",
+  "dependencies": {
+    "enabledAdvancedServices": []
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8"
+}
