@@ -1,34 +1,3 @@
-// 定数（実際のIDに置き換えてください）
-const SPREADSHEET2_ID = '11SP_34mStbYnxVksTydYOxLpZ-Eu7YH2dESZ8FOM370'; // 個別指導
-const SPREADSHEET3_ID = '13NJnF5iMQy_oANT9zObqXQoFby1K0rxC7PHn_iJJyig'; // 集団授業
-const SPREADSHEET4_ID = '1eVeh2aC4XGCGPxLOtbhGCYJ97fmpEreDvW7p_n2kp8o'; // テンプレート（「月間報告テンプレート」を含む）
-const SPREADSHEET5_ID = '1K6o16aJW25kFkchkvnKW-zkTgEKw1mjbOGG72S-Mkgo'; // 共有用テンプレート
-const TARGET_FOLDER_ID  = '14-_RANtndz335JtiayoAMMmTgbpY3sm5';
-
-
-/**
- * トリガーを設定する関数（※作成時は既存のトリガーを削除し、processMonthlyReportTrigger を設定）
- */
-function createEditTrigger() {
-  // 既存のトリガーを削除（handler 関数名が processMonthlyReportTrigger で、MAIN_SHEET_ID に紐付くもの）
-  const allTriggers = ScriptApp.getProjectTriggers();
-  allTriggers.forEach(trigger => {
-    if (trigger.getHandlerFunction() === 'processMonthlyReportTrigger' &&
-        trigger.getTriggerSourceId() === MAIN_SHEET_ID) {
-      ScriptApp.deleteTrigger(trigger);
-    }
-  });
-  
-  // 新しい編集トリガーを作成（processMonthlyReportTrigger を呼び出す）
-  ScriptApp.newTrigger('processMonthlyReportTrigger')
-    .forSpreadsheet(MAIN_SHEET_ID)
-    .onEdit()
-    .create();
-  
-  Logger.log('編集トリガーが設定されました。');
-}
-
-
 /**
  * メイン・フォーム送信・SPREADSHEET3の編集イベントのいずれからも呼び出すトリガーハンドラ
  * ※編集イベントの場合は、MAIN_SHEETではG列（7列目ではなく8列目チェックになっていたので注意）、SPREADSHEET3ではN列（14列目）の変更のみ処理
@@ -52,8 +21,8 @@ function processMonthlyReportTrigger(e) {
     if (ssId === MAIN_SHEET_ID && editedCol !== 8) {
       return;
     }
-    // SPREADSHEET3の場合は14列目以外はスキップ
-    if (ssId === SPREADSHEET3_ID && editedCol !== 14) {
+    // SPREADSHEET3の場合は16(P)列目以外はスキップ
+    if (ssId === SPREADSHEET3_ID && editedCol !== 16) {
       return;
     }
     
@@ -94,14 +63,9 @@ function processMonthlyReportTrigger(e) {
       Logger.log("フォーム送信先シートが見つかりません。");
       return;
     }
-    headers = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getValues()[0];
-    var idx = headers.indexOf("生徒名（漢字）");
-    if (idx === -1) {
-      Logger.log("フォーム送信先シートに「生徒名（漢字）」のヘッダーが見つかりません。");
-      return;
-    }
-    studentName = e.values[idx];
-    teacherName = "";
+    // フォーム回答のC列（3列目）を studentName として取得
+    studentName = e.values[2]; // e.values は 0-indexed
+    teacherName = ""; // 担当教師名は空文字列
   }
   
   if (!studentName) {
@@ -536,30 +500,4 @@ function updateAnnouncementDoc(studentName, sharedSpreadsheetLink) {
   
   doc.saveAndClose();
   Logger.log("アナウンス文の [monthlysheet] 部分を置換しました。");
-}
-
-
-
-
-
-
-/**
- * SPREADSHEET2（フォーム送信先）用のトリガーを設定する関数（必要に応じて実行）
- */
-function createSpreadsheet2Trigger() {
-  ScriptApp.newTrigger('processMonthlyReportTrigger')
-    .forSpreadsheet(SPREADSHEET2_ID)
-    .onFormSubmit()
-    .create();
-}
-
-
-/**
- * SPREADSHEET3（チェックボックス編集）用のトリガーを設定する関数（必要に応じて実行）
- */
-function createSpreadsheet3Trigger() {
-  ScriptApp.newTrigger('processMonthlyReportTrigger')
-    .forSpreadsheet(SPREADSHEET3_ID)
-    .onEdit()
-    .create();
 }
