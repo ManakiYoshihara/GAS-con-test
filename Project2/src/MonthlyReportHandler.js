@@ -197,11 +197,20 @@ function processMonthlyReport(studentName, teacherName) {
   
   Logger.log("初回処理完了：生徒[" + studentName + "]、教師[" + teacherName + "]");
   
-  // ★★【月間報告シートの作成】および【共有用シートへの転記】
-  var monthlySheetName = createMonthlyReport(studentName, teacherName, dataSpreadsheet);
-  updateSharedMonthlyReport(monthlySheetName, dataSpreadsheet, sharedFile);
-  
-  // 追加：アナウンス文内の [monthlysheet] を共有用スプレッドシートのリンクに置換
+  // ★ 月間報告生成：当月分＋25日以降は翌月分も実行 ★
+  var today = new Date();
+  var dates = [today];
+  if (today.getDate() >= 25) {
+    // 翌月1日を追加
+    dates.push(new Date(today.getFullYear(), today.getMonth() + 1, 1));
+  }
+  dates.forEach(function(d) {
+    // createMonthlyReport を日付指定で呼び出し
+    var sheetName = createMonthlyReport(studentName, teacherName, dataSpreadsheet, d);
+    updateSharedMonthlyReport(sheetName, dataSpreadsheet, sharedFile);
+  });
+
+  // アナウンス文の更新
   updateAnnouncementDoc(studentName, sharedFile.getUrl());
 }
 
@@ -256,12 +265,14 @@ function getOrOverwriteFile(templateId, fileName, folder) {
  * @param {Spreadsheet} dataSpreadsheet - データ格納用スプレッドシート
  * @returns {string} - 作成または取得したシート名（例："2025年03月度"）
  */
-function createMonthlyReport(studentName, teacherName, dataSpreadsheet) {
-  // ※一日前の日付から対象の年月を決定
-  var yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  var year = yesterday.getFullYear();
-  var month = yesterday.getMonth() + 1; // 月は0～11
+function createMonthlyReport(studentName, teacherName, dataSpreadsheet, targetDate) {
+  // targetDate が未指定なら従来どおり一日前の日付を使用
+  if (!targetDate) {
+    targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - 1);
+  }
+  var year = targetDate.getFullYear();
+  var month = targetDate.getMonth() + 1;
   var monthStr = (month < 10 ? "0" : "") + month;
   var targetSheetName = year + "年" + monthStr + "月度";
   
