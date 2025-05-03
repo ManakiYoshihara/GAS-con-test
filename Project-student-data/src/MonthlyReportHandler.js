@@ -207,6 +207,7 @@ function processMonthlyReport(studentName, teacherName) {
   dates.forEach(function(d) {
     // createMonthlyReport を日付指定で呼び出し
     var sheetName = createMonthlyReport(studentName, teacherName, dataSpreadsheet, d);
+    appendMessageDataToDataSheet(dataSpreadsheet, sheetName);
     updateSharedMonthlyReport(sheetName, dataSpreadsheet, sharedFile);
   });
 

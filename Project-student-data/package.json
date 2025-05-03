@@ -1,0 +1,15 @@
+{
+  "name": "project-student-data",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "link:dev": "ln -s .clasp.dev.json .clasp.json",
+    "link:prod": "ln -s .clasp.prod.json .clasp.json",
+    "push:dev": "npm run link:dev && clasp push",
+    "push:prod": "npm run link:prod && clasp push"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
