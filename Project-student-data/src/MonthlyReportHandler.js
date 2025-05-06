@@ -285,8 +285,8 @@ function createMonthlyReport(studentName, teacherName, dataSpreadsheet, targetDa
     if (processTemplate) {
       processSheet = processTemplate.copyTo(dataSpreadsheet);
       processSheet.setName(processSheetName);
-      // A1～O1のDATE(2025, 3, 1)部分を実行月初に置換
-      updateDynamicDateInRange(processSheet, "A1", "O1");
+      // A1～I1のDATE(2025, 3, 1)部分を実行月初に置換
+      updateDynamicDateInRange(processSheet, "A1", "I1");
     } else {
       Logger.log("『処理用テンプレート』シートが見つかりません。");
     }
