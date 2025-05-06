@@ -1,7 +1,7 @@
 /**
  * SPREADシートの「処理用（YYYY/MM）」シートのQ列がTRUEの場合、
  * O列の値に一致する「メッセージ文」から「問題」「解答」「授業動画」を取得し、
- * 月間報告シートのP,Q,R列に出力します。
+ * 月間報告シートのQ,R,S列に出力します。
  * ただし「問題」はQ列の値にかかわらず一致すればセットします。
  *
  * @param {Spreadsheet} dataSpreadsheet - データ格納用スプレッドシート
@@ -42,13 +42,19 @@ function appendMessageDataToDataSheet(dataSpreadsheet, monthlySheetName) {
   // 処理用シートのO列(15)とQ列(17)を取得（1行目から最終行まで）
   var lastProcRow = processSheet.getLastRow();
   if (lastProcRow < 1) return;
-  var procData = processSheet.getRange(1, 15, lastProcRow, 3).getValues();
-  // procData[][0]=O列, [][1]=P列, [][2]=Q列  ※P列は未使用
-  // Q列は [][2]
+  var procData = processSheet.getRange(1, 15, lastProcRow, 3).getValues(); // [O,P,Q]
 
-  // メッセージ文データ取得
+  // メッセージ文データを一度だけ取得
   var lastMsgRow = messageSheet.getLastRow();
   var msgData = messageSheet.getRange(2, 1, lastMsgRow - 1, messageSheet.getLastColumn()).getValues();
+  // msgData をキー(content)→行配列のマップに変換
+  var msgMap = {};
+  msgData.forEach(function(row) {
+    var key = row[contentIdx];
+    if (key !== "") {
+      msgMap[key] = row;
+    }
+  });
 
   // 月間報告シート取得
   var monthlySheet = dataSpreadsheet.getSheetByName(monthlySheetName);
@@ -57,20 +63,18 @@ function appendMessageDataToDataSheet(dataSpreadsheet, monthlySheetName) {
     return;
   }
 
-  // QRS列用配列作成
+  // QRS列用配列作成（9行目以降）
   var pqrValues = [];
   for (var i = 0; i < lastProcRow; i++) {
     var content = procData[i][0];
     var flag    = procData[i][2] === true; // Q列がTRUEなら解答/動画も取得
-    var match = msgData.find(function(row) {
-      return row[contentIdx] === content;
-    });
-    var prob = match ? match[problemIdx] : "";
-    var ans  = (match && flag) ? match[answerIdx] : "";
-    var vid  = (match && flag) ? match[videoIdx] : "";
+    var row     = msgMap[content];
+    var prob    = row ? row[problemIdx] : "";                   // 問題は常に取得
+    var ans     = (row && flag) ? row[answerIdx] : "";         // 解答はフラグ依存
+    var vid     = (row && flag) ? row[videoIdx] : "";          // 動画はフラグ依存
     pqrValues.push([prob, ans, vid]);
   }
 
-  // 月間報告シートのQ,R,S列（9行目以降）へ出力
+  // 月間報告シートのQ,R,S列（9行目以降）へ一括出力
   monthlySheet.getRange(9, 17, pqrValues.length, 3).setValues(pqrValues);
 }
