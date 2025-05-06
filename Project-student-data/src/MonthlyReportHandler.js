@@ -302,7 +302,7 @@ function createMonthlyReport(studentName, teacherName, dataSpreadsheet, targetDa
     monthlySheet.getRange("C1").setValue(monthStr);
     monthlySheet.getRange("B3").setValue(studentName);
     // A9にARRAYFORMULAを追加
-    var arrFormula = '=ARRAYFORMULA(\'' + processSheetName + '\'!A1:Z)';
+    var arrFormula = '=ARRAYFORMULA(\'' + processSheetName + '\'!A1:P)';
     monthlySheet.getRange("A9").setFormula(arrFormula);
   }
   
@@ -430,27 +430,52 @@ function updateSharedMonthlyReport(monthlySheetName, dataSpreadsheet, sharedFile
   }
 
   // ▼▼▼ ここから条件付き書式の設定 ▼▼▼
-  // 対象範囲：J列9行目以降
-  const jRange = copiedSheet.getRange("J9:J" + copiedSheet.getMaxRows());
-  
-  // 今日の日付の場合：薄い緑（例：#d9ead3）
-  const ruleToday = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=J9=TODAY()')
-    .setBackground("#d9ead3")
-    .setRanges([jRange])
-    .build();
-    
-  // 明日以降の日付の場合：薄い黄色（例：#FFF2CC）
-  const ruleFuture = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied('=J9>TODAY()')
-    .setBackground("#FFF2CC")
-    .setRanges([jRange])
-    .build();
-    
-  // 既存の条件付き書式ルールに追加（または上書き）
+  const maxRow = copiedSheet.getMaxRows();
+  const jRange = copiedSheet.getRange("J9:J" + maxRow);
+  const lRange = copiedSheet.getRange("L9:L" + maxRow);
+
+  // 追加したいルールをまとめて生成
+  const newRules = [
+    // J列：今日
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied("=J9=TODAY()")
+      .setBackground("#d9ead3")
+      .setRanges([jRange])
+      .build(),
+    // J列：未来
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied("=J9>TODAY()")
+      .setBackground("#FFF2CC")
+      .setRanges([jRange])
+      .build(),
+    // L列：英語
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("英語")
+      .setBackground("#F4CCCC")
+      .setRanges([lRange])
+      .build(),
+    // L列：数学
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("数学")
+      .setBackground("#CFE2F3")
+      .setRanges([lRange])
+      .build()
+  ];
+
+  // 既存のルールを取得し、重複しないものだけ追加
   let rules = copiedSheet.getConditionalFormatRules();
-  rules.push(ruleToday);
-  rules.push(ruleFuture);
+  newRules.forEach(newRule => {
+    const exists = rules.some(oldRule => {
+      const oldRanges = oldRule.getRanges().map(r => r.getA1Notation()).join();
+      const newRanges = newRule.getRanges().map(r => r.getA1Notation()).join();
+      const oldBg = oldRule.getBooleanCondition()?.getBackground();
+      const newBg = newRule.getBooleanCondition()?.getBackground();
+      return oldRanges === newRanges && oldBg === newBg;
+    });
+    if (!exists) rules.push(newRule);
+  });
+
+  // まとめて適用
   copiedSheet.setConditionalFormatRules(rules);
   // ▲▲▲ 条件付き書式の設定ここまで ▲▲▲
 
