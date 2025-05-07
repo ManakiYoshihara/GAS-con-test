@@ -4,9 +4,7 @@
  */
 function processMonthlyReportTrigger(e) {
   // 編集イベントの場合、セルの値が "TRUE" でなければ処理を中断
-  if (e.range && e.value !== "TRUE") {
-    return;
-  }
+  if (e.range && e.value !== "TRUE") return;
   
   var sheet, row, headers, studentName, teacherName = "";
   
@@ -73,8 +71,12 @@ function processMonthlyReportTrigger(e) {
     return;
   }
   
-  // メイン処理の呼び出し
-  processMonthlyReport(studentName, teacherName);
+  // 一度だけ開く
+  var ss2 = SpreadsheetApp.openById(SPREADSHEET2_ID);
+  var ss3 = SpreadsheetApp.openById(SPREADSHEET3_ID);
+
+  // メイン処理呼び出しに ss2, ss3 を渡す
+  processMonthlyReport(studentName, teacherName, ss2, ss3);
   
   // 編集イベントの場合、チェックボックスを OFF に戻す（MAIN_SHEET のときのみ）
   if (e.range && e.source.getId() === MAIN_SHEET_ID) {
@@ -85,24 +87,24 @@ function processMonthlyReportTrigger(e) {
 
 
 /**
- * メイン処理：対象生徒のファイル群（データ格納用／共有用）の作成（上書き処理）や各シートへの転記を実施
- * @param {string} studentName - 生徒名
- * @param {string} teacherName - 担当教師名（なければ空文字）
+ * メイン処理：対象生徒のファイル群作成＆データ転記（最適化版）
+ * @param {string} studentName
+ * @param {string} teacherName
+ * @param {Spreadsheet} ss2
+ * @param {Spreadsheet} ss3
  */
-function processMonthlyReport(studentName, teacherName) {
+function processMonthlyReport(studentName, teacherName, ss2, ss3) {
   // 対象フォルダの取得
   var targetFolder = DriveApp.getFolderById(TARGET_FOLDER_ID);
-  var studentFolder = null;
+  // フォルダ名に studentName を含むフォルダを検索（部分一致対応）
   var folderIterator = targetFolder.getFolders();
+  var studentFolder = targetFolder;
   while (folderIterator.hasNext()) {
-    var folder = folderIterator.next();
-    if (folder.getName().indexOf(studentName) !== -1) {
-      studentFolder = folder;
+    var f = folderIterator.next();
+    if (f.getName().indexOf(studentName) !== -1) {
+      studentFolder = f;
       break;
     }
-  }
-  if (!studentFolder) {
-    studentFolder = targetFolder;
   }
   
   // ファイル名の作成
@@ -114,88 +116,21 @@ function processMonthlyReport(studentName, teacherName) {
   var sharedFile = getOrOverwriteFile(SPREADSHEET5_ID, sharedFileName, studentFolder);
   
   var dataSpreadsheet = SpreadsheetApp.open(dataFile);
+
+  // --- 個別指導記録用：ヘッダー追加 & 一括転記 ---
+  var dstIndiv = dataSpreadsheet.getSheetByName("個別指導記録用");
+  ensureHeader(dstIndiv, ss2.getSheets()[0], 1);
+  batchCopyRows(ss2.getSheets()[0], dstIndiv, "生徒名（漢字）", studentName);
+
+  // --- 集団授業記録用：ヘッダー追加 & 一括転記 ---
+  var dstGroup = dataSpreadsheet.getSheetByName("集団授業記録用");
+  ensureHeader(dstGroup, ss3.getSheets()[0], 2);
+  batchCopyRows(ss3.getSheets()[0], dstGroup, "LINEの名前", studentName);
+
+  // --- 集団授業シートのソート（教科→日程） ---
+  sortSheet(dstGroup, ["教科", "日程"]);
   
-  // 対象シートの取得
-  var indivSheet = dataSpreadsheet.getSheetByName("個別指導記録用");
-  var groupSheet = dataSpreadsheet.getSheetByName("集団授業記録用");
-  
-  // 個別指導記録用シートが空の場合、Spreadsheet2の2行目（ヘッダー）をコピー
-  if (indivSheet.getLastRow() === 0) {
-    var ss2 = SpreadsheetApp.openById(SPREADSHEET2_ID);
-    var sheet2 = ss2.getSheets()[0];
-    var headerRow2 = sheet2.getRange(2, 1, 1, sheet2.getLastColumn()).getValues()[0];
-    indivSheet.appendRow(headerRow2);
-  }
-  
-  // 集団授業記録用シートが空の場合、Spreadsheet3の2行目（ヘッダー）をコピー
-  if (groupSheet.getLastRow() === 0) {
-    var ss3_template = SpreadsheetApp.openById(SPREADSHEET3_ID);
-    var sheet3_template = ss3_template.getSheets()[0];
-    var headerRow3 = sheet3_template.getRange(2, 1, 1, sheet3_template.getLastColumn()).getValues()[0];
-    groupSheet.appendRow(headerRow3);
-  }
-  
-  // --- Spreadsheet2からのデータ転記（個別指導記録用） ---
-  var ss2 = SpreadsheetApp.openById(SPREADSHEET2_ID);
-  var sheet2 = ss2.getSheets()[0];
-  var dataRange2 = sheet2.getDataRange();
-  var dataValues2 = dataRange2.getValues();
-  
-  var headerRowIndex2 = 1; // 2行目がヘッダーと仮定
-  var headers2 = dataValues2[headerRowIndex2];
-  var nameColIndex2 = headers2.indexOf("生徒名（漢字）");
-  if (nameColIndex2 === -1) {
-    Logger.log("Spreadsheet2に「生徒名（漢字）」のヘッダーが見つかりません。");
-  } else {
-    for (var i = headerRowIndex2 + 1; i < dataValues2.length; i++) {
-      var rowData = dataValues2[i];
-      if (rowData[nameColIndex2] === studentName) {
-        indivSheet.appendRow(rowData);
-      }
-    }
-  }
-  
-  // --- Spreadsheet3からのデータ転記（集団授業記録用） ---
-  var ss3 = SpreadsheetApp.openById(SPREADSHEET3_ID);
-  var sheet3 = ss3.getSheets()[0];
-  var dataRange3 = sheet3.getDataRange();
-  var dataValues3 = dataRange3.getValues();
-  
-  var headerRowIndex3 = 1; // 2行目がヘッダーと仮定
-  var headers3 = dataValues3[headerRowIndex3];
-  var nameColIndex3 = headers3.indexOf("LINEの名前");
-  if (nameColIndex3 === -1) {
-    Logger.log("Spreadsheet3に「LINEの名前」のヘッダーが見つかりません。");
-  } else {
-    for (var j = headerRowIndex3 + 1; j < dataValues3.length; j++) {
-      var rowData3 = dataValues3[j];
-      if (rowData3[nameColIndex3] === studentName) {
-        groupSheet.appendRow(rowData3);
-      }
-    }
-  }
-  
-  // 転記後にグループシートを「教科」列でグループ化し、
-  // 各教科内で「日程」列が昇順となるようソートする処理
-  // ヘッダー行（1行目）を取得
-  var headerRow = groupSheet.getRange(1, 1, 1, groupSheet.getLastColumn()).getValues()[0];
-  // 「教科」列と「日程」列のインデックスを特定（indexOfは0始まりのため、実際の列番号は index + 1）
-  var subjectColumnIndex = headerRow.indexOf("教科");
-  var dateColumnIndex = headerRow.indexOf("日程");
-  if (subjectColumnIndex === -1 || dateColumnIndex === -1) {
-    Logger.log("ヘッダーに「教科」または「日程」が見つかりませんでした。");
-  } else {
-    var lastRow = groupSheet.getLastRow();
-    if (lastRow > 1) { // ヘッダー以外にデータがある場合
-      groupSheet.getRange(2, 1, lastRow - 1, groupSheet.getLastColumn())
-        .sort([
-          { column: subjectColumnIndex + 1, ascending: true }, // 「教科」でソート（同じ教科が隣接）
-          { column: dateColumnIndex + 1, ascending: true }     // 各教科内で「日程」を昇順にソート
-        ]);
-    }
-  }
-  
-  Logger.log("初回処理完了：生徒[" + studentName + "]、教師[" + teacherName + "]");
+
   
   // ★ 月間報告生成：当月分＋25日以降は翌月分も実行 ★
   var today = new Date();
@@ -213,6 +148,66 @@ function processMonthlyReport(studentName, teacherName) {
 
   // アナウンス文の更新
   updateAnnouncementDoc(studentName, sharedFile.getUrl());
+}
+
+/**
+ * ensureHeader:
+ *  dstSheet が空なら、srcSheet の headerRowIndex 行目を見出しとして設定
+ */
+function ensureHeader(dstSheet, srcSheet, headerRowIndex) {
+  if (dstSheet.getLastRow() === 0) {
+    var headers = srcSheet.getRange(headerRowIndex, 1, 1, srcSheet.getLastColumn()).getValues()[0];
+    dstSheet.appendRow(headers);
+  }
+}
+
+/**
+ * batchCopyRows:
+ *   srcSheet の全データから keyHeader 列が keyValue と一致する行を
+ *   まとめて dstSheet に転記します。
+ *   （ヘッダー行を 1 行目・2 行目のいずれかから自動検出）
+ */
+function batchCopyRows(srcSheet, dstSheet, keyHeader, keyValue) {
+  var data = srcSheet.getDataRange().getValues();
+  // まず 1 行目にヘッダーがあるか試し、なければ 2 行目をヘッダーとみなす
+  var headerRowIndex = data[0].indexOf(keyHeader) >= 0 ? 0
+                       : (data[1].indexOf(keyHeader) >= 0 ? 1 : -1);
+  if (headerRowIndex < 0) return;  // ヘッダーが見つからなければ終了
+
+  var idx = data[headerRowIndex].indexOf(keyHeader);
+  var rows = [];
+  for (var i = headerRowIndex + 1; i < data.length; i++) {
+    if (data[i][idx] === keyValue) rows.push(data[i]);
+  }
+  if (rows.length) {
+    dstSheet
+      .getRange(dstSheet.getLastRow() + 1, 1, rows.length, rows[0].length)
+      .setValues(rows);
+  }
+}
+
+
+
+/**
+ * sortSheet:
+ *  sheet のデータ行を headersToSort の順序で昇順ソートします。
+ *  ヘッダーは1行目、データは2行目以降を対象
+ */
+function sortSheet(sheet, headersToSort) {
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow <= 1 || lastCol < 1) return;
+  // 1行目をヘッダーとして取得
+  var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var specs = [];
+  headersToSort.forEach(function(h) {
+    var ci = headerRow.indexOf(h);
+    if (ci >= 0) specs.push({ column: ci + 1, ascending: true });
+  });
+  if (specs.length) {
+    // データ行は2行目以降
+    sheet.getRange(2, 1, lastRow - 1, lastCol).sort(specs);
+  }
 }
 
 
