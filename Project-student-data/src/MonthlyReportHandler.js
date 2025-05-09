@@ -420,14 +420,19 @@ function updateSharedMonthlyReport(monthlySheetName, dataSpreadsheet, sharedFile
   // B列9行目以降のみ、手動で「表示形式→数字→自動」にチェックしたのと同等の処理を適用
   if (numRows >= 9) {
     // B列は2列目。9行目以降の行数は (numRows - 8)
-    const specialRange = copiedSheet.getRange(9, 2, numRows - 8, 1);
-    specialRange.setNumberFormat("General");
+    const bRange = copiedSheet.getRange(9, 2, numRows - 8, 1);
+    bRange.setNumberFormat("General");
+
+    // K列は11列目。9行目以降の行数は (numRows - 8)
+    const kRange = copiedSheet.getRange(9, 11, numRows - 8, 1);
+    kRange.setNumberFormat("HH:mm");
   }
 
   // ▼▼▼ ここから条件付き書式の設定 ▼▼▼
+  //L列からM列に変更したが変数名はそのまま
   const maxRow = copiedSheet.getMaxRows();
   const jRange = copiedSheet.getRange("J9:J" + maxRow);
-  const lRange = copiedSheet.getRange("L9:L" + maxRow);
+  const lRange = copiedSheet.getRange("M9:M" + maxRow);
 
   // 追加したいルールをまとめて生成
   const newRules = [
@@ -453,6 +458,12 @@ function updateSharedMonthlyReport(monthlySheetName, dataSpreadsheet, sharedFile
     SpreadsheetApp.newConditionalFormatRule()
       .whenTextEqualTo("数学")
       .setBackground("#CFE2F3")
+      .setRanges([lRange])
+      .build(),
+    // L列：理科
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("理科")
+      .setBackground("#FFF2CC")
       .setRanges([lRange])
       .build()
   ];
