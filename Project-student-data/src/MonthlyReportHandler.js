@@ -324,8 +324,9 @@ function updateDynamicDateInRange(sheet, startCell, endCell) {
   var newStartDateStr = "DATE(" + year + ", " + month + ", 1)";
   
   // A～Oは15列。H列は8番目 (0-indexedでは7番目) なので、そのセルはスキップする
+  // A1とI1のみ処理（i===0 がA列、i===8 がI列）
   for (var i = 0; i < formulas.length; i++) {
-    if (i === 7) continue; // H1に相当する部分は処理しない
+    if (i !== 0 && i !== 8) continue;
     if (formulas[i]) {
       formulas[i] = formulas[i].replace(/DATE\(\s*2025\s*,\s*3\s*,\s*1\s*\)/g, newStartDateStr);
     }
