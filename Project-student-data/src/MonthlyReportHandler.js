@@ -119,7 +119,7 @@ function processMonthlyReport(studentName, teacherName, ss2, ss3) {
 
   // --- 個別指導記録用：ヘッダー追加 & 一括転記 ---
   var dstIndiv = dataSpreadsheet.getSheetByName("個別指導記録用");
-  ensureHeader(dstIndiv, ss2.getSheets()[0], 1);
+  ensureHeader(dstIndiv, ss2.getSheets()[0], 2);
   batchCopyRows(ss2.getSheets()[0], dstIndiv, "生徒名（漢字）", studentName);
 
   // --- 集団授業記録用：ヘッダー追加 & 一括転記 ---
